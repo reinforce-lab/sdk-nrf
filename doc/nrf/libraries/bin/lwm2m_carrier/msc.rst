@@ -10,7 +10,7 @@ The below message sequence chart shows the initialization of the LwM2M carrier l
     hscale = "1.1";
     Application,"LwM2M carrier Library";
     Application=>"LwM2M carrier Library"       [label="lwm2m_carrier_init()"];
-    Application<<="LwM2M carrier Library"      [label="LWM2M_CARRIER_EVENT_BSDLIB_INIT"];
+    Application<<="LwM2M carrier Library"      [label="LWM2M_CARRIER_EVENT_MODEM_INIT"];
     Application<<="LwM2M carrier Library"      [label="LWM2M_CARRIER_EVENT_CONNECTING"];
     Application<<="LwM2M carrier Library"      [label="LWM2M_CARRIER_EVENT_CONNECTED"];
     Application<-"LwM2M carrier Library"       [label="Success"];

@@ -9,6 +9,38 @@ Changelog
 
 All notable changes to this project are documented in this file.
 
+liblwm2m_carrier 0.30.0
+***********************
+
+Release for modem firmware version 1.3.1.
+
+Certification status
+====================
+
+For certification status, see `Mobile network operator certifications`_.
+
+Size
+====
+
+See :ref:`lwm2m_lib_size` for an explanation of the library size in different scenarios.
+
++-------------------------+---------------+------------+
+|                         | Flash (Bytes) | RAM (Bytes)|
++-------------------------+---------------+------------+
+| Library size            |               |            |
+| (binary)                |               |            |
++-------------------------+---------------+------------+
+| Library size            |               |            |
+| (reference application) |               |            |
++-------------------------+---------------+------------+
+
+Changes
+=======
+
+*
+*
+*
+
 liblwm2m_carrier 0.22.0
 ***********************
 
