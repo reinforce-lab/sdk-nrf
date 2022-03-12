@@ -28,6 +28,7 @@
 #include <bluetooth/hci_raw.h>
 
 #include "sensor.h"
+#include "storage.h"
 
 #define LOG_MODULE_NAME hci_uart
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
@@ -38,10 +39,10 @@ static K_THREAD_STACK_DEFINE(tx_thread_stack, CONFIG_BT_HCI_TX_STACK_SIZE);
 static struct k_thread tx_thread_data;
 static K_FIFO_DEFINE(tx_queue);
 
-static void data_acquision_handler(struct k_timer *timer);
-K_TIMER_DEFINE(data_acquisition_timer, data_acquision_handler, NULL);
-static void data_acquisition_work_handler(struct k_work *work);
-K_WORK_DEFINE(data_acquisition_work, data_acquisition_work_handler);
+static void _timer_handler(struct k_timer *timer);
+K_TIMER_DEFINE(_timer, _timer_handler, NULL);
+static void _work_handler(struct k_work *work);
+K_WORK_DEFINE(_work, _work_handler);
 
 /* RX in terms of bluetooth communication */
 static K_FIFO_DEFINE(uart_tx_queue);
@@ -334,7 +335,7 @@ static int hci_uart_init(const struct device *unused)
 SYS_DEVICE_DEFINE("hci_uart", hci_uart_init, NULL,
 		  APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);
 
-static void data_acquisition_work_handler(struct k_work *work)
+static void _work_handler(struct k_work *work)
 {
     ARG_UNUSED(work);
 
@@ -343,8 +344,7 @@ static void data_acquisition_work_handler(struct k_work *work)
     uint32_t tilt_count = 0;
 
     LOG_INF("data_acquisition_work_handler().");
-    LOG_INF("  k_is_in_isr(): %d.", k_is_in_isr());
-	k_sleep(K_MSEC(100));
+    // LOG_INF("  k_is_in_isr(): %d.", k_is_in_isr());
 
     ret = measure(adc_buffer);
     if(ret != 0) {
@@ -354,12 +354,28 @@ static void data_acquisition_work_handler(struct k_work *work)
     tilt_count = (uint32_t)get_tilt_count();
 
 	LOG_INF("adc0: %d, adc1: %d, tilt_count: %d.", adc_buffer[0], adc_buffer[1], tilt_count);	
+
+	// // Write/Read to/from flash random data.
+	int64_t buf[20];
+	int64_t ticks = k_uptime_ticks();
+	for(int i = 0; i < 20; i++) {
+		buf[i] = ticks;
+	}
+	storage_write(0, (uint8_t *)buf, sizeof(buf));
+	storage_read(0, (uint8_t *)buf, sizeof(buf));
+	// compare.
+	for(int i =0; i < 20; i++) {
+		if(buf[i] != ticks) {
+			LOG_ERR("Invalid value: buf[%dth], real:%lld ,expected:%lld.", i, buf[i], ticks);
+			break;
+		}
+	}
 }
 
-void data_acquision_handler(struct k_timer *timer)
+void _timer_handler(struct k_timer *timer)
 {
     ARG_UNUSED(timer);
-    k_work_submit(&data_acquisition_work);
+    k_work_submit(&_work);
 }	
 
 void main(void)
@@ -410,7 +426,9 @@ void main(void)
 
 	// Starting a measurement work.
 	init_sensor();
-    k_timer_start(&data_acquisition_timer, K_SECONDS(20), K_SECONDS(10));
+	init_storage();
+
+    k_timer_start(&_timer, K_SECONDS(20), K_SECONDS(10));
 
 	while (1) {
 		struct net_buf *buf;
@@ -418,7 +436,30 @@ void main(void)
 		buf = net_buf_get(&rx_queue, K_FOREVER);
 		err = h4_send(buf);
 		if (err) {
-			LOG_ERR("Failed to send");
+			LOG_ERR("Failed to send");	
 		}
+
+		static int64_t ticks = 0;
+
+		// Write/Read to/from flash random data for every 10 seconds.
+		// int64_t now_ticks = k_uptime_ticks();
+		// if( (now_ticks - ticks) > 10 * 1000) {	
+		// 	LOG_INF("write/read nvs.");
+		// 	ticks = now_ticks;
+
+		// 	int64_t buf[20];
+		// 	for(int i = 0; i < 20; i++) {
+		// 		buf[i] = ticks;
+		// 	}
+		// 	storage_write(0, (uint8_t *)buf, sizeof(buf));
+		// 	storage_read(0, (uint8_t *)buf, sizeof(buf));
+		// 	// compare.
+		// 	for(int i =0; i < 20; i++) {
+		// 		if(buf[i] != ticks) {
+		// 			LOG_ERR("Invalid value: buf[%dth], real:%lld ,expected:%lld.", i, buf[i], ticks);
+		// 			break;
+		// 		}
+		// 	}
+		// }				
 	}
 }
