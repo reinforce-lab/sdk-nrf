@@ -40,6 +40,8 @@ static K_FIFO_DEFINE(tx_queue);
 
 static void data_acquision_handler(struct k_timer *timer);
 K_TIMER_DEFINE(data_acquisition_timer, data_acquision_handler, NULL);
+static void data_acquisition_work_handler(struct k_work *work);
+K_WORK_DEFINE(data_acquisition_work, data_acquisition_work_handler);
 
 /* RX in terms of bluetooth communication */
 static K_FIFO_DEFINE(uart_tx_queue);
@@ -332,15 +334,17 @@ static int hci_uart_init(const struct device *unused)
 SYS_DEVICE_DEFINE("hci_uart", hci_uart_init, NULL,
 		  APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);
 
-void data_acquision_handler(struct k_timer *timer)
+static void data_acquisition_work_handler(struct k_work *work)
 {
-	ARG_UNUSED(timer);
+    ARG_UNUSED(work);
 
 	int ret;
     int16_t adc_buffer[2] = {0};
     uint32_t tilt_count = 0;
 
-    LOG_INF("data_acquision_handler().");
+    LOG_INF("data_acquisition_work_handler().");
+    LOG_INF("  k_is_in_isr(): %d.", k_is_in_isr());
+	k_sleep(K_MSEC(100));
 
     ret = measure(adc_buffer);
     if(ret != 0) {
@@ -349,8 +353,14 @@ void data_acquision_handler(struct k_timer *timer)
 
     tilt_count = (uint32_t)get_tilt_count();
 
-	LOG_INF("adc0: %d, adc1: %d, tilt_count: %d.", adc_buffer[0], adc_buffer[1], tilt_count);
+	LOG_INF("adc0: %d, adc1: %d, tilt_count: %d.", adc_buffer[0], adc_buffer[1], tilt_count);	
 }
+
+void data_acquision_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+    k_work_submit(&data_acquisition_work);
+}	
 
 void main(void)
 {
