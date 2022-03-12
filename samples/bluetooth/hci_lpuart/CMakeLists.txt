@@ -7,5 +7,5 @@ project(hci_lpuart)
 
 # NORDIC SDK APP START
 #target_sources(app PRIVATE ${ZEPHYR_BASE}/samples/bluetooth/hci_uart/src/main.c)
-target_sources(app PRIVATE src/main.c)
+target_sources(app PRIVATE src/main.c src/sensor.c)
 # NORDIC SDK APP END

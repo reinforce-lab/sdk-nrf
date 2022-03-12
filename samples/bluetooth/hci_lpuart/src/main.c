@@ -27,6 +27,8 @@
 #include <bluetooth/buf.h>
 #include <bluetooth/hci_raw.h>
 
+#include "sensor.h"
+
 #define LOG_MODULE_NAME hci_uart
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
@@ -35,6 +37,9 @@ static const struct device *hci_uart_dev =
 static K_THREAD_STACK_DEFINE(tx_thread_stack, CONFIG_BT_HCI_TX_STACK_SIZE);
 static struct k_thread tx_thread_data;
 static K_FIFO_DEFINE(tx_queue);
+
+static void data_acquision_handler(struct k_timer *timer);
+K_TIMER_DEFINE(data_acquisition_timer, data_acquision_handler, NULL);
 
 /* RX in terms of bluetooth communication */
 static K_FIFO_DEFINE(uart_tx_queue);
@@ -327,6 +332,26 @@ static int hci_uart_init(const struct device *unused)
 SYS_DEVICE_DEFINE("hci_uart", hci_uart_init, NULL,
 		  APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);
 
+void data_acquision_handler(struct k_timer *timer)
+{
+	ARG_UNUSED(timer);
+
+	int ret;
+    int16_t adc_buffer[2] = {0};
+    uint32_t tilt_count = 0;
+
+    LOG_INF("data_acquision_handler().");
+
+    ret = measure(adc_buffer);
+    if(ret != 0) {
+        LOG_ERR(" measure(), error: %d.", ret);
+    }
+
+    tilt_count = (uint32_t)get_tilt_count();
+
+	LOG_INF("adc0: %d, adc1: %d, tilt_count: %d.", adc_buffer[0], adc_buffer[1], tilt_count);
+}
+
 void main(void)
 {
 	/* incoming events and data from the controller */
@@ -372,6 +397,10 @@ void main(void)
 			K_THREAD_STACK_SIZEOF(tx_thread_stack), tx_thread,
 			NULL, NULL, NULL, K_PRIO_COOP(7), 0, K_NO_WAIT);
 	k_thread_name_set(&tx_thread_data, "HCI uart TX");
+
+	// Starting a measurement work.
+	init_sensor();
+    k_timer_start(&data_acquisition_timer, K_SECONDS(20), K_SECONDS(10));
 
 	while (1) {
 		struct net_buf *buf;
