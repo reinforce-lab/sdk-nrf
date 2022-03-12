@@ -32,3 +32,7 @@
 &uart0 {
 	/delete-property/ rx-pin;
 };
+
+&adc {
+	status = "okay";
+};
