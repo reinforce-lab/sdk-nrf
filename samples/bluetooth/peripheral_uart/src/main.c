@@ -53,6 +53,13 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 #define UART_WAIT_FOR_BUF_DELAY K_MSEC(50)
 #define UART_WAIT_FOR_RX CONFIG_BT_NUS_UART_RX_WAIT_TIME
 
+//static struct k_work_delayable mqtt_work;
+static void connection_param_update_handler(struct k_work *work);
+K_WORK_DEFINE(connection_param_update_work, connection_param_update_handler);
+
+static void connection_interval_timer_handler(struct k_timer *timer);
+K_TIMER_DEFINE(connection_interval_timer, connection_interval_timer_handler, NULL);
+
 static K_SEM_DEFINE(ble_init_ok, 0, 1);
 
 static struct bt_conn *current_conn;
@@ -334,6 +341,8 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	current_conn = bt_conn_ref(conn);
 
 	dk_set_led_on(CON_STATUS_LED);
+
+	k_timer_start(&connection_interval_timer, K_SECONDS(20), K_SECONDS(10));	
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
@@ -354,6 +363,92 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		current_conn = NULL;
 		dk_set_led_off(CON_STATUS_LED);
 	}
+
+	k_timer_stop(&connection_interval_timer);	
+}
+
+static void connection_param_update_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+
+	static int _cnt = 0;
+	int min_interval = 24;
+	int max_interval = 48;
+	int latency = 0;
+	int timeout = 300;
+// パラメータチェック
+// interval_min , 6, 3200.
+// latency 500未満
+// timeout 10, 3200,
+// (timeout * 4) > (1 + latency) * interval_max
+	switch(_cnt) {
+		case 0:
+			min_interval = 24;// 30msec
+			max_interval = 48;// 60msec
+			latency = 0;
+			timeout = 300; // 3000msec
+		break;
+
+		case 1:
+			min_interval = 240;//300msec
+			max_interval = 480;//600msec
+			latency = 0;
+			timeout = 300;		
+		break;
+
+		case 2:
+			min_interval = 24;// 30msec
+			max_interval = 48;// 60msec
+			latency = 10;
+			timeout = 300;		
+		break;
+
+		case 3:
+			min_interval = 24;//30msec
+			max_interval = 480;//600msec
+			latency = 0;
+			timeout = 300;		
+		break;
+
+		case 4:
+			min_interval = 24;//30msec
+			max_interval = 480;//600msec
+			latency = 2;
+			timeout = 300;		
+		break;
+
+		default: 
+			return;
+	}
+
+	if(current_conn) {
+		LOG_INF("conn: min:%d, max:%d, latency:%d, timeout: %d.", min_interval, max_interval, latency, timeout);
+		struct bt_le_conn_param *p_param = BT_LE_CONN_PARAM(min_interval, max_interval, latency, timeout);
+		int ret = bt_conn_le_param_update(current_conn, p_param);
+		if(ret) {
+			LOG_ERR("bt_conn_le_param_update(), err: %d.",ret);
+		}
+		_cnt++;
+	}
+}
+static void connection_interval_timer_handler(struct k_timer *timer)
+{
+	ARG_UNUSED(timer);
+
+    // タイマからの呼び出しはISR、getaddressなどは内部でオフロードのためにmutexを使い、mutexはISRでは使えない。
+    // ワーカーとして投げる。
+    k_work_submit(&connection_param_update_work);
+}
+
+static bool le_param_req_cb(struct bt_conn *conn, struct bt_le_conn_param *param)
+{
+	LOG_INF("le_param_req_cb(), max: %d, min:%d, lat: %d, timeout: %d.", param->interval_max, param->interval_min, param->latency, param->timeout);
+	return true;
+}
+
+static void le_param_updated_cb(struct bt_conn *conn, uint16_t interval, uint16_t latency, uint16_t timeout)
+{
+	LOG_INF("le_param_updated_cb(), interval: %d, lat: %d, timeout: %d.", interval, latency, timeout);
 }
 
 #ifdef CONFIG_BT_NUS_SECURITY_ENABLED
@@ -380,6 +475,8 @@ static struct bt_conn_cb conn_callbacks = {
 #ifdef CONFIG_BT_NUS_SECURITY_ENABLED
 	.security_changed = security_changed,
 #endif
+	.le_param_req = le_param_req_cb,
+	.le_param_updated = le_param_updated_cb,
 };
 
 #if defined(CONFIG_BT_NUS_SECURITY_ENABLED)
